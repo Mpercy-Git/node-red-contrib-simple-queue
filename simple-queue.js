@@ -4,13 +4,11 @@ module.exports = function(RED) {
     function SimpleQueueNode(config) {
         RED.nodes.createNode(this, config);
         this.count = config.count||4;
-        this.unique_check = config.unique_check||undefined;
-
-        this.waiting = [];
-        this.queue = [];
-        this.unique_index = {};
-
+        this.waiting = []; // stores messages
+        this.queue = []; // stores msg id
+        var queuelist = [];
         let node = this;
+        
 
         node.interval = setInterval(() => {
             node.status({
@@ -27,7 +25,8 @@ module.exports = function(RED) {
                 if(!message) break; // nothing is waiting in queue
 
                 node.queue.push(message.queue_msg_id);
-                node.send(message);
+                queuelist = [].concat(node.waiting);
+                node.send([message,[queuelist]]);
             }
         }
 
@@ -38,10 +37,9 @@ module.exports = function(RED) {
                 //node.error("Clearing message id " + msg.queue_msg_id);
                 if(idx !== -1) {
                     node.queue.splice(idx, 1);
-                    // If we have unique check enabled remove it from the list
                     if(node.unique_check) {
                         delete node.unique_index[msg.queue_msg_id];
-                    }
+                    }                    
                     dequeueMessages();
                 } else {
                     node.error("Failed to find msg id");
@@ -65,15 +63,18 @@ module.exports = function(RED) {
                 if(node.queue.length < config.count) {
                     // Still place in queue
                     node.queue.push(m.queue_msg_id);
-                    node.send(m);
+                    node.send([m,[queuelist]]);
                 } else {
                     //node.error("Waiting for empty space in queue...");
                     node.waiting.push(m);
+                    queuelist = [].concat(node.waiting);
+                    node.send([null,[queuelist]])
                 }
             }
         });
         node.on('close', function() {
             node.queue = [];
+            queuelist = [];
             clearInterval(node.interval);
             // Clean up
         });
